@@ -2,25 +2,19 @@ package de.markusfisch.android.pielauncher.activity;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.pm.ActivityInfo;
 import android.content.res.Resources;
-import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.GestureDetector;
-import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
-import android.widget.TextView;
 
 import de.markusfisch.android.pielauncher.R;
 import de.markusfisch.android.pielauncher.app.PieLauncherApp;
-import de.markusfisch.android.pielauncher.content.AppMenu;
-import de.markusfisch.android.pielauncher.os.BatteryOptimization;
 import de.markusfisch.android.pielauncher.view.SoftKeyboard;
 import de.markusfisch.android.pielauncher.view.SystemBars;
 import de.markusfisch.android.pielauncher.widget.AppPieView;
@@ -63,20 +57,14 @@ public class HomeActivity extends Activity {
 	protected void onCreate(Bundle state) {
 		super.onCreate(state);
 
-		// Restrict to current orientation, whatever that is.
-		// Makes it possible to use it on tablets in landscape and
-		// in portrait for phones. Should become a choice at some point.
-		setRequestedOrientation(
-				Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2
-						? ActivityInfo.SCREEN_ORIENTATION_LOCKED
-						: ActivityInfo.SCREEN_ORIENTATION_NOSENSOR);
-
 		kb = new SoftKeyboard(this);
 		gestureDetector = new GestureDetector(this, new FlingListener(
 				ViewConfiguration.get(this).getScaledMinimumFlingVelocity()));
 
 		setContentView(R.layout.activity_home);
-		showBatteryOptimizationInfoIfNecessary();
+		if (!SettingsActivity.isReady(this)) {
+			SettingsActivity.startWelcome(this);
+		}
 
 		pieView = findViewById(R.id.pie);
 		searchInput = findViewById(R.id.search);
@@ -84,7 +72,14 @@ public class HomeActivity extends Activity {
 		initPieView(getResources());
 		initSearchInput();
 
-		SystemBars.listenForWindowInsets(pieView);
+		SystemBars.listenForWindowInsets(pieView,
+				(left, top, right, bottom) -> pieView.setPadding(
+						left,
+						// Never set a top padding because the list should
+						// appear under the status bar.
+						0,
+						right,
+						bottom));
 		SystemBars.setTransparentSystemBars(getWindow());
 	}
 
@@ -113,6 +108,12 @@ public class HomeActivity extends Activity {
 	}
 
 	@Override
+	protected void onStart() {
+		super.onStart();
+		setRequestedOrientation(PieLauncherApp.prefs.getOrientation());
+	}
+
+	@Override
 	protected void onResume() {
 		super.onResume();
 		if (showAllAppsOnResume) {
@@ -131,7 +132,7 @@ public class HomeActivity extends Activity {
 
 	private void initPieView(Resources res) {
 		final int searchBarBackgroundColor = res.getColor(
-				R.color.background_search_bar);
+				R.color.bg_search_bar);
 		final float searchBarThreshold = res.getDisplayMetrics().density * 48f;
 		pieView.setListListener(new AppPieView.ListListener() {
 			@Override
@@ -156,12 +157,9 @@ public class HomeActivity extends Activity {
 						pieView.isAppListScrolled() ? color : 0);
 			}
 		});
-		PieLauncherApp.appMenu.setUpdateListener(new AppMenu.UpdateListener() {
-			@Override
-			public void onUpdate() {
-				searchInput.setText(null);
-				updateAppList();
-			}
+		PieLauncherApp.appMenu.setUpdateListener(() -> {
+			searchInput.setText(null);
+			updateAppList();
 		});
 	}
 
@@ -184,24 +182,21 @@ public class HomeActivity extends Activity {
 				}
 			}
 		});
-		searchInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-			@Override
-			public boolean onEditorAction(TextView v, int actionId,
-					KeyEvent event) {
-				switch (actionId) {
-					case EditorInfo.IME_ACTION_GO:
-					case EditorInfo.IME_ACTION_SEND:
-					case EditorInfo.IME_ACTION_DONE:
-					case EditorInfo.IME_ACTION_NEXT:
-					case EditorInfo.IME_NULL:
-						if (searchInput.getText().toString().length() > 0) {
-							pieView.launchFirstApp();
-						}
-						hideAllApps();
-						return true;
-					default:
-						return false;
-				}
+		searchInput.setOnEditorActionListener((v, actionId, event) -> {
+			switch (actionId) {
+				case EditorInfo.IME_ACTION_GO:
+				case EditorInfo.IME_ACTION_SEND:
+				case EditorInfo.IME_ACTION_DONE:
+				case EditorInfo.IME_ACTION_NEXT:
+				case EditorInfo.IME_ACTION_SEARCH:
+				case EditorInfo.IME_NULL:
+					if (searchInput.getText().toString().length() > 0) {
+						pieView.launchFirstApp();
+					}
+					hideAllApps();
+					return true;
+				default:
+					return false;
 			}
 		});
 	}
@@ -212,7 +207,9 @@ public class HomeActivity extends Activity {
 		}
 
 		searchInput.setVisibility(View.VISIBLE);
-		kb.showFor(searchInput);
+		if (PieLauncherApp.prefs.displayKeyboard()) {
+			kb.showFor(searchInput);
+		}
 
 		// Clear search input.
 		boolean searchWasEmpty = searchInput.getText().toString().isEmpty();
@@ -241,12 +238,6 @@ public class HomeActivity extends Activity {
 
 	private boolean isSearchVisible() {
 		return searchInput.getVisibility() == View.VISIBLE;
-	}
-
-	private void showBatteryOptimizationInfoIfNecessary() {
-		if (!BatteryOptimization.isIgnoringBatteryOptimizations(this)) {
-			startActivity(new Intent(this, BatteryOptimizationActivity.class));
-		}
 	}
 
 	private void updateAppList() {

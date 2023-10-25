@@ -1,6 +1,17 @@
 # Change Log
 
-# 1.13.0
+## 1.14.1
+* Improve settings
+* Fix search action for some keyboards
+
+## 1.14.0
+* Add an option to show/hide keyboard
+* Add an option to manually set an orientation
+* Add an option to set launcher as default
+* Fix loosing default orientation
+* Update Chinese translation
+
+## 1.13.0
 * Add support for work profiles
 * Add french translation
 * Add cancelling pie menu with two fingers
